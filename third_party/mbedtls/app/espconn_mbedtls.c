@@ -433,7 +433,9 @@ static void mbedtls_fail_info(espconn_msg *pinfo, int ret)
 		} else {
 			os_printf("client's data invalid protocol\n");
 		}
-		mbedtls_ssl_close_notify(&TLSmsg->ssl);
+            if(ret != MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY){
+                mbedtls_ssl_close_notify(&TLSmsg->ssl);
+            }
 	} else{
 		if (pinfo->preverse != NULL) {
 			os_printf("server handshake failed!\n");
@@ -664,6 +666,11 @@ again:
 			offerset += sizeof(file_head) + pfile_param->file_head.file_length;
 			goto again;
 		}
+		/*Optional is load the cert*/
+		if (auth_info->auth_type == ESPCONN_CERT_OWN && os_memcmp(pfile_param->file_head.file_name, "certificate", os_strlen("certificate")) != 0){
+			offerset += sizeof(file_head) + pfile_param->file_head.file_length;
+			goto again;
+		}
 		load_buf = (uint8_t *) os_zalloc( pfile_param->file_head.file_length + FILE_OFFSET);
 		if (load_buf == NULL){
 			os_free(pfile_param);
@@ -830,7 +837,10 @@ int __attribute__((weak)) mbedtls_parse_internal(int socket, sint8 error)
 					if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == 0){
 						ret = ESPCONN_OK;
 						break;
-					} else{
+					} else if(ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY){
+						ret = ESPCONN_OK;
+                                                mbedtls_ssl_close_notify(&TLSmsg->ssl);
+					}else{
 						break;
 					}
 				}				
@@ -882,6 +892,9 @@ int __attribute__((weak)) mbedtls_parse_internal(int socket, sint8 error)
 			}
 			
 			system_soft_wdt_stop();
+			uint8 cpu_freq;
+			cpu_freq = system_get_cpu_freq();
+			system_update_cpu_freq(160);
 			while ((ret = mbedtls_ssl_handshake(&TLSmsg->ssl)) != 0) {
 
 				if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
@@ -892,6 +905,7 @@ int __attribute__((weak)) mbedtls_parse_internal(int socket, sint8 error)
 				}
 			}
 			system_soft_wdt_restart();
+			system_update_cpu_freq(cpu_freq);
 			lwIP_REQUIRE_NOERROR(ret, exit);
 			/**/
 			TLSmsg->quiet = mbedtls_handshake_result(TLSmsg);
@@ -927,9 +941,12 @@ int __attribute__((weak)) mbedtls_parse_internal(int socket, sint8 error)
 
 exit:
 	if (ret != ESPCONN_OK){
-		mbedtls_fail_info(Threadmsg, ret);		
-		ets_post(lwIPThreadPrio, NETCONN_EVENT_CLOSE,(uint32)Threadmsg);
-	}
+		mbedtls_fail_info(Threadmsg, ret);
+                if(ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY){
+                     Threadmsg->hs_status = ESPCONN_OK;
+                }
+                ets_post(lwIPThreadPrio, NETCONN_EVENT_CLOSE,(uint32)Threadmsg);
+        }
 	return ret;
 }
 
