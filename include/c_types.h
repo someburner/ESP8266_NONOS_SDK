@@ -32,7 +32,7 @@ typedef unsigned short      uint16_t;
 typedef signed short        sint16_t;
 typedef signed short        int16_t;
 typedef unsigned int        uint32_t;
-typedef signed long         sint32_t;
+typedef signed int          sint32_t;
 typedef signed int          int32_t;
 typedef signed long long    sint64_t;
 typedef unsigned long long  uint64_t;
@@ -65,7 +65,9 @@ typedef double              real64;
 
 typedef unsigned int        size_t;
 
+#ifndef __packed
 #define __packed        __attribute__((packed))
+#endif
 
 #define LOCAL       static
 
